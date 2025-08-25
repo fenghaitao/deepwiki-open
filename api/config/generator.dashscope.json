@@ -1,0 +1,12 @@
+{
+  "generator": {
+    "client_class": "DashscopeClient",
+    "model_kwargs": {
+      "model": "qwen-plus",
+      "temperature": 0.1,
+      "top_p": 0.8,
+      "max_tokens": 4000,
+      "stream": true
+    }
+  }
+}

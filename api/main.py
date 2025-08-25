@@ -18,10 +18,20 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Check for required environment variables
 required_env_vars = ['GOOGLE_API_KEY', 'OPENAI_API_KEY']
+optional_env_vars = ['GITHUB_TOKEN', 'OPENROUTER_API_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']
 missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+missing_optional = [var for var in optional_env_vars if not os.environ.get(var)]
+
 if missing_vars:
-    logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
+    logger.warning(f"Missing required environment variables: {', '.join(missing_vars)}")
     logger.warning("Some functionality may not work correctly without these variables.")
+
+if missing_optional:
+    logger.info(f"Optional environment variables not set: {', '.join(missing_optional)}")
+    logger.info("These are optional and only needed for specific providers:")
+    logger.info("- GITHUB_TOKEN: Optional for GitHub Copilot (uses OAuth2 by default)")
+    logger.info("- OPENROUTER_API_KEY: Required for OpenRouter provider")
+    logger.info("- AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY: Required for AWS Bedrock provider")
 
 # Configure Google Generative AI
 import google.generativeai as genai
