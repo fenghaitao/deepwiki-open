@@ -100,6 +100,9 @@ def check_environment():
         "OPENAI_API_KEY": "OpenAI integration tests"
     }
     
+    # GitHub Copilot uses OAuth2 authentication (no API key needed)
+    print("✅ GitHub Copilot uses automatic OAuth2 authentication (no API key required)")
+    
     for key, purpose in api_keys.items():
         if os.getenv(key):
             print(f"✅ {key} is set ({purpose})")
@@ -124,12 +127,19 @@ def check_environment():
         print("✅ requests available")
     except ImportError:
         print("❌ requests not available - install with: pip install requests")
+    
+    try:
+        import litellm
+        print("✅ litellm available (required for GitHub Copilot)")
+    except ImportError:
+        print("❌ litellm not available - install with: pip install litellm")
 
 def main():
     parser = argparse.ArgumentParser(description="Run DeepWiki tests")
     parser.add_argument("--unit", action="store_true", help="Run only unit tests")
     parser.add_argument("--integration", action="store_true", help="Run only integration tests")
     parser.add_argument("--api", action="store_true", help="Run only API tests")
+    parser.add_argument("--github-copilot", action="store_true", help="Run only GitHub Copilot tests")
     parser.add_argument("--check-env", action="store_true", help="Only check environment setup")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     
@@ -149,6 +159,17 @@ def main():
         test_dirs.append("integration")
     if args.api:
         test_dirs.append("api")
+    if args.github_copilot:
+        # Run the comprehensive GitHub Copilot test suite
+        print("\n🚀 Running GitHub Copilot Test Suite")
+        print("=" * 60)
+        try:
+            github_test_file = Path(__file__).parent / "test_github_copilot_all.py"
+            success = run_test_file(github_test_file)
+            sys.exit(0 if success else 1)
+        except Exception as e:
+            print(f"❌ Error running GitHub Copilot tests: {e}")
+            sys.exit(1)
     
     # If no specific category selected, run all
     if not test_dirs:

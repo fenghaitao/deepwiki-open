@@ -22,8 +22,41 @@ from api.tools.embedder import get_embedder
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Maximum token limit for OpenAI embedding models
+# Provider-specific token limits for embedding models
+EMBEDDING_TOKEN_LIMITS = {
+    'openai': 8192,           # OpenAI text-embedding-* models
+    'github_copilot': 8192,   # GitHub Copilot uses OpenAI models
+    'google': 2048,           # Google text-embedding-004
+    'dashscope': 2048,        # Qwen text-embedding-v2 (DashScope)
+    'ollama': 2048,           # Conservative limit for Ollama models
+}
+
+# Backward compatibility
 MAX_EMBEDDING_TOKENS = 8192
+
+def get_embedding_token_limit(embedder_type: str = None) -> int:
+    """
+    Get the token limit for the specified embedder type.
+    
+    Args:
+        embedder_type (str, optional): The embedder type ('openai', 'google', 'ollama', 'dashscope', 'github_copilot').
+                                     If None, will be determined from configuration.
+    
+    Returns:
+        int: The token limit for the embedder type
+        
+    Raises:
+        ValueError: If the embedder type is not supported
+    """
+    if embedder_type is None:
+        from api.config import get_embedder_type
+        embedder_type = get_embedder_type()
+    
+    if embedder_type not in EMBEDDING_TOKEN_LIMITS:
+        supported_types = list(EMBEDDING_TOKEN_LIMITS.keys())
+        raise ValueError(f"Unsupported embedder type '{embedder_type}'. Supported types: {supported_types}")
+    
+    return EMBEDDING_TOKEN_LIMITS[embedder_type]
 
 def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool = None) -> int:
     """
@@ -312,10 +345,11 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
                         and "test" not in relative_path.lower()
                     )
 
-                    # Check token count
+                    # Check token count against provider-specific limit
                     token_count = count_tokens(content, embedder_type)
-                    if token_count > MAX_EMBEDDING_TOKENS * 10:
-                        logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
+                    token_limit = get_embedding_token_limit(embedder_type)
+                    if token_count > token_limit * 10:  # Allow 10x limit for code files
+                        logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit ({token_limit * 10}) for embedder type '{embedder_type}'")
                         continue
 
                     doc = Document(
@@ -346,10 +380,11 @@ def read_all_documents(path: str, embedder_type: str = None, is_ollama_embedder:
                     content = f.read()
                     relative_path = os.path.relpath(file_path, path)
 
-                    # Check token count
+                    # Check token count against provider-specific limit
                     token_count = count_tokens(content, embedder_type)
-                    if token_count > MAX_EMBEDDING_TOKENS:
-                        logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
+                    token_limit = get_embedding_token_limit(embedder_type)
+                    if token_count > token_limit:
+                        logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit ({token_limit}) for embedder type '{embedder_type}'")
                         continue
 
                     doc = Document(

@@ -12,6 +12,7 @@ from typing import (
     Literal,
     List,
     Sequence,
+    AsyncGenerator,
 )
 
 import logging
@@ -95,6 +96,16 @@ def parse_stream_response(completion: ChatCompletionChunk) -> str:
 
 def handle_streaming_response(generator: Stream[ChatCompletionChunk]):
     """Handle the streaming response."""
+    for completion in generator:
+        log.debug(f"Raw chunk completion: {completion}")
+        parsed_content = parse_stream_response(completion)
+        yield parsed_content
+
+
+async def ahandle_streaming_response(generator: Stream[ChatCompletionChunk]):
+    """Handle the streaming response asynchronously."""
+    # Note: This is a sync generator being wrapped in an async function
+    # We need to iterate through it synchronously but yield asynchronously
     for completion in generator:
         log.debug(f"Raw chunk completion: {completion}")
         parsed_content = parse_stream_response(completion)
@@ -399,11 +410,7 @@ class DashscopeClient(ModelClient):
                 api_kwargs["extra_body"] = extra_body
 
             completion = self.sync_client.chat.completions.create(**api_kwargs)
-            
-            if api_kwargs.get("stream", False):
-                return handle_streaming_response(completion)
-            else:
-                return self.parse_chat_completion(completion)
+            return completion
         elif model_type == ModelType.EMBEDDER:
             # Extract input texts from api_kwargs
             texts = api_kwargs.get("input", [])
@@ -510,11 +517,7 @@ class DashscopeClient(ModelClient):
                 api_kwargs["extra_body"] = extra_body
 
             completion = await self.async_client.chat.completions.create(**api_kwargs)
-
-            if api_kwargs.get("stream", False):
-                return handle_streaming_response(completion)
-            else:
-                return self.parse_chat_completion(completion)
+            return completion
         elif model_type == ModelType.EMBEDDER:
             # Extract input texts from api_kwargs
             texts = api_kwargs.get("input", [])

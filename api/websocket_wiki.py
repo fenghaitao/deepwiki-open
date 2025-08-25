@@ -15,6 +15,7 @@ from api.openai_client import OpenAIClient
 from api.openrouter_client import OpenRouterClient
 from api.azureai_client import AzureAIClient
 from api.dashscope_client import DashscopeClient
+from api.github_copilot_client import GitHubCopilotClient
 from api.rag import RAG
 
 # Configure logging
@@ -40,7 +41,7 @@ class ChatCompletionRequest(BaseModel):
     type: Optional[str] = Field("github", description="Type of repository (e.g., 'github', 'gitlab', 'bitbucket')")
 
     # model parameters
-    provider: str = Field("google", description="Model provider (google, openai, openrouter, ollama, azure)")
+    provider: str = Field("google", description="Model provider (google, openai, openrouter, ollama, azure, github_copilot)")
     model: Optional[str] = Field(None, description="Model name for the specified provider")
 
     language: Optional[str] = Field("en", description="Language for content generation (e.g., 'en', 'ja', 'zh', 'es', 'kr', 'vi')")
@@ -196,7 +197,12 @@ async def handle_websocket_chat(websocket: WebSocket):
                     # This will use the actual RAG implementation
                     retrieved_documents = request_rag(rag_query, language=request.language)
 
-                    if retrieved_documents and retrieved_documents[0].documents:
+                    # Check if we got a successful retrieval with documents
+                    if (retrieved_documents and 
+                        isinstance(retrieved_documents, list) and 
+                        len(retrieved_documents) > 0 and 
+                        hasattr(retrieved_documents[0], 'documents') and 
+                        retrieved_documents[0].documents):
                         # Format context for the prompt in a more structured way
                         documents = retrieved_documents[0].documents
                         logger.info(f"Retrieved {len(documents)} documents")
@@ -528,6 +534,26 @@ This file contains...
                 model_kwargs=model_kwargs,
                 model_type=ModelType.LLM
             )
+        elif request.provider == "github_copilot":
+            logger.info(f"Using GitHub Copilot with model: {request.model}")
+
+            # GitHub Copilot uses automatic OAuth2 authentication
+            logger.info("GitHub Copilot ready - uses automatic OAuth2 authentication")
+
+            # Initialize GitHub Copilot client
+            model = GitHubCopilotClient()
+            model_kwargs = {
+                "model": request.model or "gpt-4o",
+                "stream": True,
+                "temperature": model_config.get("temperature", 0.7),
+                "max_tokens": model_config.get("max_tokens", 4096)
+            }
+
+            api_kwargs = model.convert_inputs_to_api_kwargs(
+                input=prompt,
+                model_kwargs=model_kwargs,
+                model_type=ModelType.LLM
+            )
         else:
             # Initialize Google Generative AI model
             model = genai.GenerativeModel(
@@ -609,6 +635,136 @@ This file contains...
                 except Exception as e_azure:
                     logger.error(f"Error with Azure AI API: {str(e_azure)}")
                     error_msg = f"\nError with Azure AI API: {str(e_azure)}\n\nPlease check that you have set the AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_VERSION environment variables with valid values."
+                    await websocket.send_text(error_msg)
+                    # Close the WebSocket connection after sending the error message
+                    await websocket.close()
+            elif request.provider == "dashscope":
+                try:
+                    # Get the response and handle it properly using the previously created api_kwargs
+                    logger.info("Making DashScope API call")
+                    response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+                    # Handle streaming response from DashScope
+                    async for chunk in response:
+                        choices = getattr(chunk, "choices", [])
+                        if len(choices) > 0:
+                            delta = getattr(choices[0], "delta", None)
+                            if delta is not None:
+                                text = getattr(delta, "content", None)
+                                if text is not None:
+                                    await websocket.send_text(text)
+                    # Explicitly close the WebSocket connection after the response is complete
+                    await websocket.close()
+                except Exception as e_dashscope:
+                    logger.error(f"Error with DashScope API: {str(e_dashscope)}")
+                    error_msg = f"\nError with DashScope API: {str(e_dashscope)}\n\nPlease check that you have set the DASHSCOPE_API_KEY environment variable with a valid API key."
+                    await websocket.send_text(error_msg)
+                    # Close the WebSocket connection after sending the error message
+                    await websocket.close()
+            elif request.provider == "github_copilot":
+                try:
+                    # Get the response and handle it properly using the previously created api_kwargs
+                    logger.info("Making GitHub Copilot API call")
+                    
+                    # Check if this is a wiki structure request (non-streaming for complete XML)
+                    is_wiki_structure_request = (
+                        "wiki structure" in prompt.lower() or 
+                        "<wiki_structure>" in prompt or 
+                        "analyze this github repository" in prompt.lower() or
+                        "create a wiki" in prompt.lower()
+                    )
+                    
+                    if is_wiki_structure_request:
+                        logger.info("Detected wiki structure request - using non-streaming mode for complete XML response")
+                        # For wiki structure requests, use non-streaming to get complete response
+                        # then apply XML enhancement
+                        api_kwargs["stream"] = False
+                        response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+                        
+                        # Parse the response using our enhanced parsing that includes XML handling
+                        parsed_response = model.parse_chat_completion(response)
+                        
+                        if parsed_response.error:
+                            logger.error(f"Error parsing GitHub Copilot response: {parsed_response.error}")
+                            await websocket.send_text(f"Error: {parsed_response.error}")
+                        else:
+                            # Send the complete enhanced response
+                            logger.info(f"Sending complete response with XML enhancement applied")
+                            await websocket.send_text(parsed_response.data)
+                    else:
+                        logger.info("Regular chat request - using streaming mode")
+                        # For regular chat, use streaming as before
+                        logger.info(f"Calling GitHub Copilot acall for streaming...")
+                        response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+                        logger.info(f"✅ GitHub Copilot acall completed successfully")
+                        
+                        logger.info(f"GitHub Copilot streaming response type: {type(response)}")
+                        logger.info(f"Response object: {response}")
+                        
+                        # Track streaming progress
+                        chunk_count = 0
+                        content_chunks = []
+                        
+                        logger.info(f"Starting to iterate over streaming response...")
+                        
+                        # Handle streaming response from GitHub Copilot
+                        try:
+                            logger.info(f"About to start async iteration...")
+                            async for chunk in response:
+                                chunk_count += 1
+                                logger.info(f"Received chunk {chunk_count}: {type(chunk)}")
+                                
+                                # For GitHub Copilot, the streaming response comes from _handle_streaming_response
+                                # which yields content directly
+                                if isinstance(chunk, str):
+                                    # Direct content from our _handle_streaming_response method
+                                    logger.info(f"Direct content chunk {chunk_count}: {chunk[:100]}{'...' if len(chunk) > 100 else ''}")
+                                    content_chunks.append(chunk)
+                                    await websocket.send_text(chunk)
+                                else:
+                                    # Standard streaming chunk format
+                                    choices = getattr(chunk, "choices", [])
+                                    if len(choices) > 0:
+                                        delta = getattr(choices[0], "delta", None)
+                                        if delta is not None:
+                                            text = getattr(delta, "content", None)
+                                            if text is not None:
+                                                logger.info(f"Delta content chunk {chunk_count}: {text[:100]}{'...' if len(text) > 100 else ''}")
+                                                content_chunks.append(text)
+                                                await websocket.send_text(text)
+                                            else:
+                                                logger.info(f"Chunk {chunk_count} has no content in delta")
+                                        else:
+                                            logger.info(f"Chunk {chunk_count} has no delta")
+                                    else:
+                                        logger.info(f"Chunk {chunk_count} has no choices")
+                        except Exception as streaming_error:
+                            logger.error(f"❌ CRITICAL: Error during GitHub Copilot streaming: {streaming_error}")
+                            logger.error(f"   Stream response type: {type(response)}")
+                            logger.error(f"   Response object: {response}")
+                            logger.error(f"   Chunks received before error: {chunk_count}")
+                            import traceback
+                            logger.error(f"   Full traceback: {traceback.format_exc()}")
+                            
+                            # Try to send error to frontend
+                            try:
+                                await websocket.send_text(f"Streaming error: {str(streaming_error)}")
+                            except:
+                                logger.error("Could not send error to websocket")
+                            
+                            raise
+                        
+                        total_content = ''.join(content_chunks)
+                        logger.info(f"GitHub Copilot streaming completed: {chunk_count} chunks, {len(total_content)} total characters")
+                        
+                        if len(total_content) == 0:
+                            logger.warning("No content received from GitHub Copilot streaming response!")
+                            await websocket.send_text("Warning: No content generated by GitHub Copilot")
+                    
+                    # Explicitly close the WebSocket connection after the response is complete
+                    await websocket.close()
+                except Exception as e_github:
+                    logger.error(f"Error with GitHub Copilot API: {str(e_github)}")
+                    error_msg = f"\nError with GitHub Copilot API: {str(e_github)}\n\nGitHub Copilot uses automatic OAuth2 authentication. Please ensure you have access to GitHub Copilot."
                     await websocket.send_text(error_msg)
                     # Close the WebSocket connection after sending the error message
                     await websocket.close()
@@ -728,6 +884,58 @@ This file contains...
                         except Exception as e_fallback:
                             logger.error(f"Error with Azure AI API fallback: {str(e_fallback)}")
                             error_msg = f"\nError with Azure AI API fallback: {str(e_fallback)}\n\nPlease check that you have set the AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_VERSION environment variables with valid values."
+                            await websocket.send_text(error_msg)
+                    elif request.provider == "dashscope":
+                        try:
+                            # Create new api_kwargs with the simplified prompt
+                            fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
+                                input=simplified_prompt,
+                                model_kwargs=model_kwargs,
+                                model_type=ModelType.LLM
+                            )
+
+                            # Get the response using the simplified prompt
+                            logger.info("Making fallback DashScope API call")
+                            fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
+
+                            # Handle streaming fallback response from DashScope
+                            async for chunk in fallback_response:
+                                choices = getattr(chunk, "choices", [])
+                                if len(choices) > 0:
+                                    delta = getattr(choices[0], "delta", None)
+                                    if delta is not None:
+                                        text = getattr(delta, "content", None)
+                                        if text is not None:
+                                            await websocket.send_text(text)
+                        except Exception as e_fallback:
+                            logger.error(f"Error with DashScope API fallback: {str(e_fallback)}")
+                            error_msg = f"\nError with DashScope API fallback: {str(e_fallback)}\n\nPlease check that you have set the DASHSCOPE_API_KEY environment variable with a valid API key."
+                            await websocket.send_text(error_msg)
+                    elif request.provider == "github_copilot":
+                        try:
+                            # Create new api_kwargs with the simplified prompt
+                            fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
+                                input=simplified_prompt,
+                                model_kwargs=model_kwargs,
+                                model_type=ModelType.LLM
+                            )
+
+                            # Get the response using the simplified prompt
+                            logger.info("Making fallback GitHub Copilot API call")
+                            fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
+
+                            # Handle streaming fallback response from GitHub Copilot
+                            async for chunk in fallback_response:
+                                choices = getattr(chunk, "choices", [])
+                                if len(choices) > 0:
+                                    delta = getattr(choices[0], "delta", None)
+                                    if delta is not None:
+                                        text = getattr(delta, "content", None)
+                                        if text is not None:
+                                            await websocket.send_text(text)
+                        except Exception as e_fallback:
+                            logger.error(f"Error with GitHub Copilot API fallback: {str(e_fallback)}")
+                            error_msg = f"\nError with GitHub Copilot API fallback: {str(e_fallback)}\n\nGitHub Copilot uses automatic OAuth2 authentication. Please ensure you have access to GitHub Copilot."
                             await websocket.send_text(error_msg)
                     else:
                         # Initialize Google Generative AI model

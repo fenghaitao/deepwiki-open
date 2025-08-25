@@ -93,15 +93,21 @@ export default function UserSelector({
         }
 
         const data = await response.json();
+        console.log('Fetched model config:', data);
         setModelConfig(data);
 
         // Initialize provider and model with defaults from API if not already set
-        if (!provider && data.defaultProvider) {
+        // OR if the current provider doesn't exist in the available providers
+        const currentProviderExists = provider && data.providers.some((p: Provider) => p.id === provider);
+        
+        if ((!provider || !currentProviderExists) && data.defaultProvider) {
+          console.log('Setting default provider:', data.defaultProvider, 'Current provider exists:', currentProviderExists);
           setProvider(data.defaultProvider);
 
           // Find the default provider and set its default model
           const selectedProvider = data.providers.find((p: Provider) => p.id === data.defaultProvider);
           if (selectedProvider && selectedProvider.models.length > 0) {
+            console.log('Setting default model:', selectedProvider.models[0].id);
             setModel(selectedProvider.models[0].id);
           }
         }
@@ -322,11 +328,22 @@ next.config.js
               className="input-japanese block w-full px-2.5 py-1.5 text-sm rounded-md bg-transparent text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
               disabled={!provider || isLoading || !modelConfig?.providers.find(p => p.id === provider)?.models?.length}
             >
-              {modelConfig?.providers.find((p: Provider) => p.id === provider)?.models.map((modelOption) => (
-                <option key={modelOption.id} value={modelOption.id}>
-                  {modelOption.name}
-                </option>
-              )) || <option value="">{t.form?.selectModel || 'Select Model'}</option>}
+              {(() => {
+                console.log('Rendering model dropdown with:', {
+                  provider,
+                  isLoading,
+                  modelConfig,
+                  selectedProvider: modelConfig?.providers.find(p => p.id === provider),
+                  models: modelConfig?.providers.find(p => p.id === provider)?.models
+                });
+                const selectedProvider = modelConfig?.providers.find((p: Provider) => p.id === provider);
+                return selectedProvider?.models.map((modelOption) => (
+                  <option key={modelOption.id} value={modelOption.id}>
+                    {modelOption.name}
+                  </option>
+                )) || [<option key="default" value="">{t.form?.selectModel || 'Select Model'}</option>];
+              })()
+              }
             </select>
           )}
         </div>

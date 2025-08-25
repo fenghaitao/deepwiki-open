@@ -61,6 +61,87 @@ For detailed instructions on using DeepWiki with Ollama and Docker, see [Ollama 
 > - Get an OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 > - Get Azure OpenAI credentials from [Azure Portal](https://portal.azure.com/) - create an Azure OpenAI resource and get the API key, endpoint, and API version
 
+## 🔑 GitHub Token Setup (Required for Repository Access)
+
+To avoid GitHub API rate limiting errors when processing repositories, you need to set up a GitHub Personal Access Token. Without this, you may encounter:
+
+```
+API Error: Status: 403, Response: {"message":"API rate limit exceeded..."}
+```
+
+### 📋 Quick Setup Guide
+
+**Step 1: Create GitHub Personal Access Token**
+
+1. Go to [GitHub Settings → Personal Access Tokens](https://github.com/settings/tokens)
+2. Click **"Generate new token"** → **"Generate new token (classic)"**
+3. Set these permissions:
+   - ✅ **`public_repo`** (for public repositories)
+   - ✅ **`repo`** (if you need private repositories)
+4. Generate and copy the token
+
+**Step 2: Set Up Token in Frontend UI**
+
+### ⭐ Frontend Token Input (Recommended & Verified Method)
+
+**This is the confirmed working method:**
+
+1. **Open DeepWiki** in your browser
+2. **Look for the "Personal Access Token" field** in the interface
+3. **Paste your GitHub token** into this field
+4. **Start processing repositories** - rate limits are now resolved!
+
+![Token Input Interface](screenshots/Interface.png)
+
+**Why this method works:**
+- ✅ **Verified working solution** - confirmed to fix rate limiting
+- ✅ **No server configuration** needed
+- ✅ **Immediate effect** - works right away
+- ✅ **Higher rate limits** - 5,000 requests/hour vs 60/hour
+- ✅ **Secure** - token stays in your browser session
+
+
+### 🔢 Rate Limits Comparison
+
+| Authentication Method | Requests per Hour | Best For |
+|----------------------|------------------|----------|
+| **No Token** | 60 requests/hour | ❌ **Not recommended** |
+| **Personal Access Token** | 5,000 requests/hour | ✅ **Recommended** |
+| **GitHub Apps** | 15,000 requests/hour | 🏢 **Enterprise usage** |
+
+### ⚠️ Troubleshooting
+
+**If you still see rate limit errors:**
+
+1. **Check token permissions** - Ensure `public_repo` scope is enabled
+2. **Verify token format** - Should be `ghp_` prefix for classic tokens
+3. **Try frontend input** - Use the Personal Access Token field in the interface
+4. **Check token expiration** - Generate a new token if expired
+
+**Common Error Messages:**
+```bash
+# Rate limiting (needs token)
+"API rate limit exceeded for [IP]. Authenticated requests get a higher rate limit"
+
+# Invalid token format
+"Bad credentials" 
+
+# Insufficient permissions  
+"Not Found" (for private repos without proper scope)
+```
+
+### 🎯 Quick Reference
+
+**Need to fix rate limit errors? Just do this:**
+
+1. **Go to**: https://github.com/settings/tokens
+2. **Create token** with `public_repo` permission
+3. **Open DeepWiki in your browser**
+4. **Enter token** in the "Personal Access Token" field in the UI
+5. **Done!** - Rate limiting fixed! Now you get 5,000 requests/hour instead of 60
+
+> 💡 **Important**: Use the frontend UI token field, not the .env file. The UI method is confirmed to work!
+
 ### Option 2: Manual Setup (Recommended)
 
 #### Step 1: Set Up Your API Keys

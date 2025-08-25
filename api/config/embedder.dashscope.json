@@ -1,0 +1,19 @@
+{
+  "embedder": {
+    "client_class": "DashscopeClient",
+    "batch_size": 25,
+    "model_kwargs": {
+      "model": "text-embedding-v2",
+      "dimensions": 1536,
+      "encoding_format": "float"
+    }
+  },
+  "retriever": {
+    "top_k": 20
+  },
+  "text_splitter": {
+    "split_by": "word",
+    "chunk_size": 350,
+    "chunk_overlap": 100
+  }
+}

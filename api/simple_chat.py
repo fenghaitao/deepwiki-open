@@ -17,6 +17,7 @@ from api.openai_client import OpenAIClient
 from api.openrouter_client import OpenRouterClient
 from api.bedrock_client import BedrockClient
 from api.azureai_client import AzureAIClient
+from api.github_copilot_client import GitHubCopilotClient
 from api.rag import RAG
 from api.prompts import (
     DEEP_RESEARCH_FIRST_ITERATION_PROMPT,
@@ -63,7 +64,7 @@ class ChatCompletionRequest(BaseModel):
     type: Optional[str] = Field("github", description="Type of repository (e.g., 'github', 'gitlab', 'bitbucket')")
 
     # model parameters
-    provider: str = Field("google", description="Model provider (google, openai, openrouter, ollama, bedrock, azure)")
+    provider: str = Field("google", description="Model provider (google, openai, openrouter, ollama, bedrock, azure, dashscope, github_copilot)")
     model: Optional[str] = Field(None, description="Model name for the specified provider")
 
     language: Optional[str] = Field("en", description="Language for content generation (e.g., 'en', 'ja', 'zh', 'es', 'kr', 'vi')")
@@ -432,6 +433,31 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                 model_kwargs=model_kwargs,
                 model_type=ModelType.LLM
             )
+        elif request.provider == "github_copilot":
+            logger.info(f"Using GitHub Copilot with model: {request.model}")
+
+            # GitHub Copilot requires zero configuration - OAuth2 is fully automatic
+            logger.info("GitHub Copilot ready - uses automatic OAuth2 authentication")
+
+            # Initialize GitHub Copilot client
+            model = GitHubCopilotClient()
+            model_kwargs = {
+                "model": request.model,
+                "stream": True,
+                "temperature": model_config["temperature"]
+            }
+            # Only add top_p if it exists in the model config
+            if "top_p" in model_config:
+                model_kwargs["top_p"] = model_config["top_p"]
+            # Only add max_tokens if it exists in the model config
+            if "max_tokens" in model_config:
+                model_kwargs["max_tokens"] = model_config["max_tokens"]
+
+            api_kwargs = model.convert_inputs_to_api_kwargs(
+                input=prompt,
+                model_kwargs=model_kwargs,
+                model_type=ModelType.LLM
+            )
         else:
             # Initialize Google Generative AI model
             model = genai.GenerativeModel(
@@ -514,6 +540,18 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                     except Exception as e_azure:
                         logger.error(f"Error with Azure AI API: {str(e_azure)}")
                         yield f"\nError with Azure AI API: {str(e_azure)}\n\nPlease check that you have set the AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_VERSION environment variables with valid values."
+                elif request.provider == "github_copilot":
+                    try:
+                        # Get the response and handle it properly using the previously created api_kwargs
+                        logger.info("Making GitHub Copilot API call")
+                        response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+                        # Handle streaming response from GitHub Copilot
+                        async for chunk in response:
+                            if chunk:  # GitHub Copilot returns text chunks directly
+                                yield chunk
+                    except Exception as e_github:
+                        logger.error(f"Error with GitHub Copilot API: {str(e_github)}")
+                        yield f"\nError with GitHub Copilot API: {str(e_github)}\n\nGitHub Copilot uses OAuth2 authentication. If you're seeing authentication errors, you may need to set up OAuth2 or provide a GITHUB_TOKEN environment variable with Copilot access."
                 else:
                     # Generate streaming response
                     response = model.generate_content(prompt, stream=True)
@@ -648,6 +686,26 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                             except Exception as e_fallback:
                                 logger.error(f"Error with Azure AI API fallback: {str(e_fallback)}")
                                 yield f"\nError with Azure AI API fallback: {str(e_fallback)}\n\nPlease check that you have set the AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and AZURE_OPENAI_VERSION environment variables with valid values."
+                        elif request.provider == "github_copilot":
+                            try:
+                                # Create new api_kwargs with the simplified prompt
+                                fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
+                                    input=simplified_prompt,
+                                    model_kwargs=model_kwargs,
+                                    model_type=ModelType.LLM
+                                )
+
+                                # Get the response using the simplified prompt
+                                logger.info("Making fallback GitHub Copilot API call")
+                                fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
+
+                                # Handle streaming fallback response from GitHub Copilot
+                                async for chunk in fallback_response:
+                                    if chunk:  # GitHub Copilot returns text chunks directly
+                                        yield chunk
+                            except Exception as e_fallback:
+                                logger.error(f"Error with GitHub Copilot API fallback: {str(e_fallback)}")
+                                yield f"\nError with GitHub Copilot API fallback: {str(e_fallback)}\n\nGitHub Copilot uses OAuth2 authentication. If you're seeing authentication errors, you may need to set up OAuth2 or provide a GITHUB_TOKEN environment variable with Copilot access."
                         else:
                             # Initialize Google Generative AI model
                             model_config = get_model_config(request.provider, request.model)

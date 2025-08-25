@@ -15,15 +15,6 @@
       "encoding_format": "float"
     }
   },
-  "embedder_dashscope": {
-    "client_class": "DashscopeClient",
-    "batch_size": 25,
-    "model_kwargs": {
-      "model": "text-embedding-v2",
-      "dimensions": 1536,
-      "encoding_format": "float"
-    }
-  },
   "retriever": {
     "top_k": 20
   },
