@@ -417,11 +417,19 @@ class DashscopeClient(ModelClient):
                 texts = [texts]
             
             # Filter out empty or None texts - following HuggingFace client pattern
+            # Also truncate texts to DashScope's maximum length of 2048 characters
             valid_texts = []
             valid_indices = []
+            max_text_length = 2048  # DashScope embedding API limit
             for i, text in enumerate(texts):
                 if text and isinstance(text, str) and text.strip():
-                    valid_texts.append(text)
+                    # Truncate text to maximum allowed length
+                    if len(text) > max_text_length:
+                        truncated_text = text[:max_text_length]
+                        log.warning(f"🔍 Truncating text at index {i} from {len(text)} to {max_text_length} characters")
+                        valid_texts.append(truncated_text)
+                    else:
+                        valid_texts.append(text)
                     valid_indices.append(i)
                 else:
                     log.warning(f"🔍 Skipping empty or invalid text at index {i}: type={type(text)}, length={len(text) if hasattr(text, '__len__') else 'N/A'}, repr={repr(text)[:100]}")
@@ -528,11 +536,19 @@ class DashscopeClient(ModelClient):
                 texts = [texts]
             
             # Filter out empty or None texts - following HuggingFace client pattern
+            # Also truncate texts to DashScope's maximum length of 2048 characters
             valid_texts = []
             valid_indices = []
+            max_text_length = 2048  # DashScope embedding API limit
             for i, text in enumerate(texts):
                 if text and isinstance(text, str) and text.strip():
-                    valid_texts.append(text)
+                    # Truncate text to maximum allowed length
+                    if len(text) > max_text_length:
+                        truncated_text = text[:max_text_length]
+                        log.warning(f"🔍 Truncating text at index {i} from {len(text)} to {max_text_length} characters")
+                        valid_texts.append(truncated_text)
+                    else:
+                        valid_texts.append(text)
                     valid_indices.append(i)
                 else:
                     log.warning(f"🔍 Skipping empty or invalid text at index {i}: type={type(text)}, length={len(text) if hasattr(text, '__len__') else 'N/A'}, repr={repr(text)[:100]}")
