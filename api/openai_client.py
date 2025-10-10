@@ -179,6 +179,17 @@ class OpenAIClient(ModelClient):
         self._env_api_key_name = env_api_key_name
         self._env_base_url_name = env_base_url_name
         self.base_url = base_url or os.getenv(self._env_base_url_name, "https://api.openai.com/v1")
+        
+        # Detect if this is being used for iFlow
+        self._is_iflow = "iflow.cn" in self.base_url
+        if self._is_iflow:
+            log.info(f"🚀 iFlow Provider Detected! Using base URL: {self.base_url}")
+            log.info(f"🔑 iFlow API Key Environment Variable: {self._env_api_key_name}")
+            if self._env_api_key_name == "IFLOW_API_KEY":
+                log.info("✅ iFlow provider is properly configured")
+            else:
+                log.warning(f"⚠️ Expected IFLOW_API_KEY but using {self._env_api_key_name}")
+        
         self.sync_client = self.init_sync_client()
         self.async_client = None  # only initialize if the async call is called
         self.chat_completion_parser = (
@@ -412,6 +423,12 @@ class OpenAIClient(ModelClient):
         """
         kwargs is the combined input and model_kwargs.  Support streaming call.
         """
+        if self._is_iflow:
+            model_name = api_kwargs.get("model", "unknown")
+            log.info(f"🌟 iFlow API Call - Model: {model_name}, Type: {model_type}")
+            log.info(f"🔗 iFlow Endpoint: {self.base_url}")
+            log.info(f"✅ Using iFlow model: {model_name}")
+        
         log.info(f"api_kwargs: {api_kwargs}")
         self._api_kwargs = api_kwargs
         if model_type == ModelType.EMBEDDER:
@@ -491,6 +508,12 @@ class OpenAIClient(ModelClient):
         """
         kwargs is the combined input and model_kwargs
         """
+        if self._is_iflow:
+            model_name = api_kwargs.get("model", "unknown")
+            log.info(f"🌟 iFlow Async API Call - Model: {model_name}, Type: {model_type}")
+            log.info(f"🔗 iFlow Endpoint: {self.base_url}")
+            log.info(f"✅ Using iFlow model: {model_name}")
+        
         # store the api kwargs in the client
         self._api_kwargs = api_kwargs
         if self.async_client is None:

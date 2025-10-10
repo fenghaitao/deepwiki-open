@@ -46,7 +46,7 @@ import uvicorn
 
 # Check for required environment variables
 required_env_vars = ['GOOGLE_API_KEY', 'OPENAI_API_KEY']
-optional_env_vars = ['GITHUB_TOKEN', 'OPENROUTER_API_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']
+optional_env_vars = ['GITHUB_TOKEN', 'OPENROUTER_API_KEY', 'IFLOW_API_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']
 missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
 missing_optional = [var for var in optional_env_vars if not os.environ.get(var)]
 
@@ -59,6 +59,7 @@ if missing_optional:
     logger.info("These are optional and only needed for specific providers:")
     logger.info("- GitHub Copilot: Uses automatic OAuth2 authentication (no token required)")
     logger.info("- OPENROUTER_API_KEY: Required for OpenRouter provider")
+    logger.info("- IFLOW_API_KEY: Required for iFlow provider")
     logger.info("- AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY: Required for AWS Bedrock provider")
 
 # Configure Google Generative AI

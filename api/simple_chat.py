@@ -329,7 +329,69 @@ async def chat_completions_stream(request: ChatCompletionRequest):
 
         model_config = get_model_config(request.provider, request.model)["model_kwargs"]
 
-        if request.provider == "ollama":
+        # Log iFlow provider usage
+        if request.provider == "iflow":
+            logger.info(f"🚀 iFlow Provider Request Detected!")
+            logger.info(f"🤖 Model: {request.model}")
+            logger.info(f"📝 Query: {query[:100]}..." if len(query) > 100 else f"📝 Query: {query}")
+            logger.info(f"🔧 Model Config: {model_config}")
+
+        if request.provider == "iflow":
+            logger.info(f"🌟 Processing iFlow Request with model: {request.model}")
+            
+            # Use OpenAIClient configured for iFlow
+            model_client_config = get_model_config(request.provider, request.model)
+            # For iFlow, model_client is a factory function, so we need to call it
+            model_client_factory = model_client_config["model_client"]
+            model = model_client_factory()  # Call the factory to get the actual client instance
+            
+            # iFlow supported parameters (OpenAI-compatible subset)
+            supported_params = ["temperature", "top_p", "max_tokens", "frequency_penalty", "presence_penalty"]
+            
+            # Start with clean model_kwargs - only add explicitly supported parameters
+            model_kwargs = {
+                "model": request.model,
+                "stream": True,
+            }
+            
+            # Only add supported parameters that exist in config
+            for param in supported_params:
+                if param in model_config:
+                    model_kwargs[param] = model_config[param]
+                    logger.debug(f"🔧 Added iFlow parameter: {param} = {model_config[param]}")
+            
+            # Log filtered out parameters for debugging
+            unsupported_found = []
+            for param in model_config:
+                if param not in supported_params and param not in ["model"]:  # Don't complain about "model" key
+                    unsupported_found.append(param)
+            
+            if unsupported_found:
+                logger.warning(f"⚠️ iFlow: Filtered out unsupported parameters: {unsupported_found}")
+            
+            logger.info(f"✅ iFlow Model Kwargs (filtered): {model_kwargs}")
+            
+            # Double-check that no unsupported parameters sneak through
+            final_kwargs = {}
+            allowed_keys = ["model", "stream"] + supported_params
+            for key, value in model_kwargs.items():
+                if key in allowed_keys:
+                    final_kwargs[key] = value
+                else:
+                    logger.warning(f"⚠️ iFlow: Removing unexpected parameter: {key}")
+            
+            model_kwargs = final_kwargs
+            logger.info(f"🔒 iFlow Final Model Kwargs (double-filtered): {model_kwargs}")
+
+            api_kwargs = model.convert_inputs_to_api_kwargs(
+                input=prompt,
+                model_kwargs=model_kwargs,
+                model_type=ModelType.LLM
+            )
+            
+            logger.info(f"📤 iFlow API kwargs prepared successfully")
+            
+        elif request.provider == "ollama":
             prompt += " /no_think"
 
             model = OllamaClient()
@@ -472,7 +534,43 @@ async def chat_completions_stream(request: ChatCompletionRequest):
         # Create a streaming response
         async def response_stream():
             try:
-                if request.provider == "ollama":
+                if request.provider == "iflow":
+                    try:
+                        logger.info("🔄 Making iFlow API call...")
+                        response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+                        logger.info("📡 iFlow API call successful, streaming response...")
+                        
+                        # Handle streaming response from iFlow (OpenAI-compatible)
+                        async for chunk in response:
+                            logger.debug(f"🔸 iFlow raw chunk: {chunk}")
+                            choices = getattr(chunk, "choices", [])
+                            if len(choices) > 0:
+                                delta = getattr(choices[0], "delta", None)
+                                if delta is not None:
+                                    text = getattr(delta, "content", None)
+                                    if text is not None:
+                                        logger.info(f"🔸 iFlow yielding text: '{text}' (type: {type(text)}, length: {len(text)})")
+                                        yield text
+                                    else:
+                                        logger.warning(f"🔸 iFlow delta has no content: {delta}")
+                                else:
+                                    logger.warning(f"🔸 iFlow choice has no delta: {choices[0]}")
+                            else:
+                                logger.warning(f"🔸 iFlow chunk has no choices: {chunk}")
+                                
+                            # Check for finish reason
+                            if len(choices) > 0 and hasattr(choices[0], 'finish_reason'):
+                                finish_reason = choices[0].finish_reason
+                                if finish_reason:
+                                    logger.info(f"🔸 iFlow finish reason: {finish_reason}")
+                        
+                        logger.info("✅ iFlow response streaming completed")
+                        
+                    except Exception as e_iflow:
+                        logger.error(f"❌ Error with iFlow API: {str(e_iflow)}")
+                        yield f"\nError with iFlow API: {str(e_iflow)}\n\nPlease check that you have set the IFLOW_API_KEY environment variable with a valid API key."
+                        
+                elif request.provider == "ollama":
                     # Get the response and handle it properly using the previously created api_kwargs
                     response = await model.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
                     # Handle streaming response from Ollama
@@ -581,7 +679,61 @@ async def chat_completions_stream(request: ChatCompletionRequest):
                         simplified_prompt += "<note>Answering without retrieval augmentation due to input size constraints.</note>\n\n"
                         simplified_prompt += f"<query>\n{query}\n</query>\n\nAssistant: "
 
-                        if request.provider == "ollama":
+                        if request.provider == "iflow":
+                            try:
+                                logger.info("🔄 Making iFlow fallback API call (token limit exceeded)...")
+                                
+                                # Use the same filtered model_kwargs for fallback
+                                fallback_model_kwargs = {
+                                    "model": request.model,
+                                    "stream": True,
+                                }
+                                
+                                # Apply the same parameter filtering for fallback
+                                supported_params = ["temperature", "top_p", "max_tokens", "frequency_penalty", "presence_penalty"]
+                                for param in supported_params:
+                                    if param in model_config:
+                                        fallback_model_kwargs[param] = model_config[param]
+                                
+                                # Double-check fallback parameters too
+                                final_fallback_kwargs = {}
+                                allowed_keys = ["model", "stream"] + supported_params
+                                for key, value in fallback_model_kwargs.items():
+                                    if key in allowed_keys:
+                                        final_fallback_kwargs[key] = value
+                                    else:
+                                        logger.warning(f"⚠️ iFlow Fallback: Removing unexpected parameter: {key}")
+                                
+                                fallback_model_kwargs = final_fallback_kwargs
+                                logger.info(f"🔒 iFlow Fallback Model Kwargs (double-filtered): {fallback_model_kwargs}")
+                                
+                                # Create new api_kwargs with the simplified prompt
+                                fallback_api_kwargs = model.convert_inputs_to_api_kwargs(
+                                    input=simplified_prompt,
+                                    model_kwargs=fallback_model_kwargs,
+                                    model_type=ModelType.LLM
+                                )
+
+                                # Get the response using the simplified prompt
+                                fallback_response = await model.acall(api_kwargs=fallback_api_kwargs, model_type=ModelType.LLM)
+
+                                # Handle streaming fallback response from iFlow
+                                async for chunk in fallback_response:
+                                    choices = getattr(chunk, "choices", [])
+                                    if len(choices) > 0:
+                                        delta = getattr(choices[0], "delta", None)
+                                        if delta is not None:
+                                            text = getattr(delta, "content", None)
+                                            if text is not None:
+                                                yield text
+                                                
+                                logger.info("✅ iFlow fallback response completed")
+                                
+                            except Exception as e_iflow_fallback:
+                                logger.error(f"❌ Error with iFlow API fallback: {str(e_iflow_fallback)}")
+                                yield f"\nError with iFlow API fallback: {str(e_iflow_fallback)}\n\nPlease check that you have set the IFLOW_API_KEY environment variable with a valid API key."
+                                
+                        elif request.provider == "ollama":
                             simplified_prompt += " /no_think"
 
                             # Create new api_kwargs with the simplified prompt

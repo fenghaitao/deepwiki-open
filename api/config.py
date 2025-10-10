@@ -20,6 +20,7 @@ from adalflow import GoogleGenAIClient, OllamaClient
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+IFLOW_API_KEY = os.environ.get('IFLOW_API_KEY')
 # GitHub Copilot uses automatic OAuth2 authentication - no tokens needed
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
@@ -33,6 +34,8 @@ if GOOGLE_API_KEY:
     os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
 if OPENROUTER_API_KEY:
     os.environ["OPENROUTER_API_KEY"] = OPENROUTER_API_KEY
+if IFLOW_API_KEY:
+    os.environ["IFLOW_API_KEY"] = IFLOW_API_KEY
 # GitHub Copilot uses automatic OAuth2 authentication - no token setup needed
 if AWS_ACCESS_KEY_ID:
     os.environ["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
@@ -128,9 +131,24 @@ def load_generator_config():
     # Add client classes to each provider
     if "providers" in generator_config:
         for provider_id, provider_config in generator_config["providers"].items():
+            # Log iFlow provider detection
+            if provider_id == "iflow":
+                logger.info(f"🚀 iFlow Provider Configuration Loaded!")
+                logger.info(f"📋 iFlow Config: {provider_config}")
+                base_url = provider_config.get("base_url", "not specified")
+                api_key_env = provider_config.get("api_key_env", "not specified")
+                default_model = provider_config.get("default_model", "not specified")
+                logger.info(f"🔗 iFlow Base URL: {base_url}")
+                logger.info(f"🔑 iFlow API Key Env: {api_key_env}")
+                logger.info(f"🤖 iFlow Default Model: {default_model}")
+                models = list(provider_config.get("models", {}).keys())
+                logger.info(f"📝 iFlow Available Models: {models}")
+            
             # Try to set client class from client_class
             if provider_config.get("client_class") in CLIENT_CLASSES:
                 provider_config["model_client"] = CLIENT_CLASSES[provider_config["client_class"]]
+                if provider_id == "iflow":
+                    logger.info(f"✅ iFlow using client class: {provider_config.get('client_class')}")
             # Fall back to default mapping based on provider_id
             elif provider_id in ["google", "openai", "openrouter", "ollama", "bedrock", "azure", "dashscope", "github_copilot"]:
                 default_map = {
@@ -379,6 +397,12 @@ def get_model_config(provider="google", model=None):
     if not provider_config:
         raise ValueError(f"Configuration for provider '{provider}' not found")
 
+    # Log when iFlow provider is being used
+    if provider == "iflow":
+        logger.info(f"🎯 Creating iFlow Model Client!")
+        logger.info(f"🤖 Requested Model: {model}")
+        logger.info(f"📋 Provider Config: {provider_config}")
+
     model_client = provider_config.get("model_client")
     if not model_client:
         raise ValueError(f"Model client not specified for provider '{provider}'")
@@ -395,6 +419,7 @@ def get_model_config(provider="google", model=None):
         model_params = provider_config["models"][model]
     else:
         default_model = provider_config.get("default_model")
+        model = default_model  # Use default model
         model_params = provider_config["models"][default_model]
 
     # Prepare base configuration
@@ -403,7 +428,29 @@ def get_model_config(provider="google", model=None):
     }
 
     # Provider-specific adjustments
-    if provider == "ollama":
+    if provider == "iflow":
+        # iFlow-specific configuration
+        base_url = provider_config.get("base_url", "https://apis.iflow.cn/v1")
+        api_key_env = provider_config.get("api_key_env", "IFLOW_API_KEY")
+        
+        logger.info(f"🔧 Configuring iFlow Client:")
+        logger.info(f"   🔗 Base URL: {base_url}")
+        logger.info(f"   🔑 API Key Env: {api_key_env}")
+        logger.info(f"   🤖 Model: {model}")
+        
+        # Create a lambda that returns a properly configured client instance
+        def create_iflow_client():
+            return model_client(
+                base_url=base_url,
+                env_api_key_name=api_key_env
+            )
+        
+        result["model_client"] = create_iflow_client
+        result["model_kwargs"] = {"model": model, **model_params}  # model is already stripped if needed
+        
+        logger.info(f"✅ iFlow Client Factory Created Successfully!")
+        
+    elif provider == "ollama":
         # Ollama uses a slightly different parameter structure
         if "options" in model_params:
             result["model_kwargs"] = {"model": model, **model_params["options"]}

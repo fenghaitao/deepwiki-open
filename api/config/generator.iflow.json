@@ -1,0 +1,39 @@
+{
+  "default_provider": "iflow",
+  "providers": {
+    "iflow": {
+      "client_class": "OpenAIClient",
+      "default_model": "Qwen3-Coder",
+      "supportsCustomModel": true,
+      "base_url": "https://apis.iflow.cn/v1",
+      "api_key_env": "IFLOW_API_KEY",
+      "models": {
+        "Qwen3-Coder": {
+          "temperature": 0.1,
+          "top_p": 0.8,
+          "max_tokens": 4000
+        },
+        "qwen-plus": {
+          "temperature": 0.1,
+          "top_p": 0.8,
+          "max_tokens": 4000
+        },
+        "qwen-turbo": {
+          "temperature": 0.1,
+          "top_p": 0.8,
+          "max_tokens": 4000
+        },
+        "qwen-max": {
+          "temperature": 0.1,
+          "top_p": 0.8,
+          "max_tokens": 4000
+        },
+        "qwen-long": {
+          "temperature": 0.1,
+          "top_p": 0.8,
+          "max_tokens": 4000
+        }
+      }
+    }
+  }
+}
