@@ -841,18 +841,17 @@ class GitHubCopilotClient(ModelClient):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
         """Create client from dictionary."""
-        return cls(
-            api_key=data.get("api_key"),
-            base_url=data.get("base_url"),
-            env_api_key_name=data.get("env_api_key_name", "GITHUB_TOKEN"),
-        )
+        # GitHub Copilot uses OAuth2 authentication and doesn't need API keys
+        # Just create a new instance with default parameters
+        return cls()
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert client to dictionary."""
+        # GitHub Copilot uses OAuth2 authentication and doesn't need API keys
+        # Return minimal serialization data
         return {
-            "api_key": self._api_key,
-            "base_url": self.base_url,
-            "env_api_key_name": self._env_api_key_name,
+            "client_type": "GitHubCopilotClient",
+            "oauth2_authentication": True,
         }
 
 
