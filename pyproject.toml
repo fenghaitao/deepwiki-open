@@ -24,5 +24,6 @@ dependencies = [
   "pytest>=7.0.0",
   "azure-identity>=1.12.0",
   "azure-core>=1.24.0",
-  "litellm @ git+https://github.com/fenghaitao/litellm.git"
+  "litellm @ git+https://github.com/fenghaitao/litellm.git",
+  "watchfiles>=0.18.0"
 ]
