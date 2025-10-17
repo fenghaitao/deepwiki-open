@@ -7,6 +7,7 @@ import ModelSelectionModal from '@/components/ModelSelectionModal';
 import ThemeToggle from '@/components/theme-toggle';
 import WikiTreeView from '@/components/WikiTreeView';
 import { useLanguage } from '@/contexts/LanguageContext';
+import BranchSelector from '@/components/BranchSelector';
 import { RepoInfo } from '@/types/repoinfo';
 import getRepoUrl from '@/utils/getRepoUrl';
 import { extractUrlDomain, extractUrlPath } from '@/utils/urlDecoder';
@@ -192,6 +193,7 @@ export default function RepoWikiPage() {
   const isCustomModelParam = searchParams.get('is_custom_model') === 'true';
   const customModelParam = searchParams.get('custom_model') || '';
   const language = searchParams.get('language') || 'en';
+  const branchParam = searchParams.get('branch') || '';
   const repoType = repoUrl?.includes('bitbucket.org')
     ? 'bitbucket'
     : repoUrl?.includes('gitlab.com')
@@ -271,8 +273,29 @@ export default function RepoWikiPage() {
   const [authCode, setAuthCode] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  // Default branch state
+  // Branch state
   const [defaultBranch, setDefaultBranch] = useState<string>('main');
+  const [currentBranch, setCurrentBranch] = useState<string>(branchParam || 'main');
+
+  // Handler for branch changes
+  const handleBranchChange = useCallback((newBranch: string) => {
+    setCurrentBranch(newBranch);
+    
+    // Update URL with new branch parameter
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('branch', newBranch);
+    window.history.pushState({}, '', currentUrl.toString());
+    
+    // Clear wiki data to force refresh with new branch
+    setWikiStructure(null);
+    setPages([]);
+    setSelectedPage(null);
+    setSelectedSection(null);
+    setFileTree('');
+    
+    // Fetch repository structure for the new branch
+    fetchRepositoryStructure();
+  }, []);
 
   // Helper function to generate proper repository file URLs
   const generateFileUrl = useCallback((filePath: string): string => {
@@ -1229,10 +1252,12 @@ IMPORTANT:
           console.warn('Could not fetch repository info for default branch:', err);
         }
 
-        // Create list of branches to try, prioritizing the actual default branch
-        const branchesToTry = defaultBranchLocal 
-          ? [defaultBranchLocal, 'main', 'master'].filter((branch, index, arr) => arr.indexOf(branch) === index)
-          : ['main', 'master'];
+        // Use current branch if specified, otherwise try default branch and fallbacks
+        const branchesToTry = currentBranch && currentBranch !== 'main'
+          ? [currentBranch, defaultBranchLocal, 'main', 'master'].filter((branch, index, arr) => branch && arr.indexOf(branch) === index)
+          : defaultBranchLocal 
+            ? [defaultBranchLocal, 'main', 'master'].filter((branch, index, arr) => arr.indexOf(branch) === index)
+            : ['main', 'master'];
 
         for (const branch of branchesToTry) {
           const apiUrl = `${githubApiBaseUrl}/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
@@ -2047,6 +2072,21 @@ IMPORTANT:
                   </>
                 )}
               </div>
+              
+              {/* Branch Selector - consistent with Wiki Type styling */}
+              {effectiveRepoInfo.type !== 'local' && (
+                <div className="mb-3 flex items-center text-xs text-[var(--muted)]">
+                  <span className="mr-2">Branch:</span>
+                  <BranchSelector
+                    owner={owner}
+                    repo={repo}
+                    repoType={effectiveRepoInfo.type as 'github' | 'gitlab' | 'bitbucket'}
+                    currentBranch={currentBranch}
+                    onBranchChange={handleBranchChange}
+                    token={currentToken}
+                  />
+                </div>
+              )}
 
               {/* Wiki Type Indicator */}
               <div className="mb-3 flex items-center text-xs text-[var(--muted)]">

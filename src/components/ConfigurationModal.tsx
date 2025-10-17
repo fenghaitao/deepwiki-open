@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import UserSelector from './UserSelector';
 import TokenInput from './TokenInput';
+import BranchSelector from './BranchSelector';
 
 interface ConfigurationModalProps {
   isOpen: boolean;
@@ -11,6 +12,10 @@ interface ConfigurationModalProps {
 
   // Repository input
   repositoryInput: string;
+  
+  // Branch selection
+  selectedBranch?: string;
+  setSelectedBranch?: (branch: string) => void;
 
   // Language selection
   selectedLanguage: string;
@@ -64,6 +69,8 @@ export default function ConfigurationModal({
   isOpen,
   onClose,
   repositoryInput,
+  selectedBranch,
+  setSelectedBranch,
   selectedLanguage,
   setSelectedLanguage,
   supportedLanguages,
@@ -134,6 +141,64 @@ export default function ConfigurationModal({
                 {repositoryInput}
               </div>
             </div>
+
+            {/* Branch Selection - Full width, separate section */}
+            {selectedBranch && setSelectedBranch && selectedPlatform !== 'local' && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-[var(--foreground)] mb-3">
+                  {t.form?.branch || 'Branch'}
+                </label>
+                <div className="w-full">
+                  <BranchSelector
+                    owner={(() => {
+                      // Extract owner from various URL formats
+                      const input = repositoryInput.trim();
+                      console.log('ConfigModal - Repository Input:', input);
+                      
+                      // Handle GitHub/GitLab/Bitbucket URLs
+                      if (input.startsWith('http')) {
+                        const urlPath = input.replace(/^https?:\/\/[^/]+\//, '').replace(/\.git$/, '');
+                        const parts = urlPath.split('/').filter(Boolean);
+                        console.log('ConfigModal - URL parts:', parts);
+                        return parts[0] || '';
+                      }
+                      // Handle owner/repo format
+                      else if (input.includes('/')) {
+                        const parts = input.split('/').filter(Boolean);
+                        console.log('ConfigModal - Direct parts:', parts);
+                        return parts[0] || '';
+                      }
+                      return '';
+                    })()}
+                    repo={(() => {
+                      // Extract repo from various URL formats
+                      const input = repositoryInput.trim();
+                      
+                      // Handle GitHub/GitLab/Bitbucket URLs
+                      if (input.startsWith('http')) {
+                        const urlPath = input.replace(/^https?:\/\/[^/]+\//, '').replace(/\.git$/, '');
+                        const parts = urlPath.split('/').filter(Boolean);
+                        return parts[1] || '';
+                      }
+                      // Handle owner/repo format
+                      else if (input.includes('/')) {
+                        const parts = input.split('/').filter(Boolean);
+                        return parts[1] || '';
+                      }
+                      return '';
+                    })()}
+                    repoType={selectedPlatform}
+                    currentBranch={selectedBranch}
+                    onBranchChange={setSelectedBranch}
+                    token={accessToken}
+                    className="w-full max-w-md"
+                  />
+                </div>
+                <p className="text-xs text-[var(--foreground-muted)] mt-2">
+                  Select the branch to use for wiki generation
+                </p>
+              </div>
+            )}
 
             {/* Language selection */}
             <div className="mb-4">

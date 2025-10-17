@@ -98,6 +98,7 @@ export default function Home() {
           setExcludedFiles(config.excludedFiles || '');
           setIncludedDirs(config.includedDirs || '');
           setIncludedFiles(config.includedFiles || '');
+          setSelectedBranch(config.selectedBranch || 'main');
         }
       }
     } catch (error) {
@@ -139,6 +140,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<string>(language);
+  
+  // Branch selection state
+  const [selectedBranch, setSelectedBranch] = useState<string>('main');
 
   // Authentication state
   const [authRequired, setAuthRequired] = useState<boolean>(false);
@@ -322,6 +326,7 @@ export default function Home() {
           excludedFiles,
           includedDirs,
           includedFiles,
+          selectedBranch,
         };
         existingConfigs[currentRepoUrl] = configToSave;
         localStorage.setItem(REPO_CONFIG_CACHE_KEY, JSON.stringify(existingConfigs));
@@ -381,6 +386,11 @@ export default function Home() {
 
     // Add comprehensive parameter
     params.append('comprehensive', isComprehensiveView.toString());
+    
+    // Add branch parameter
+    if (selectedBranch && selectedBranch !== 'main') {
+      params.append('branch', selectedBranch);
+    }
 
     const queryString = params.toString() ? `?${params.toString()}` : '';
 
@@ -445,6 +455,8 @@ export default function Home() {
             isOpen={isConfigModalOpen}
             onClose={() => setIsConfigModalOpen(false)}
             repositoryInput={repositoryInput}
+            selectedBranch={selectedBranch}
+            setSelectedBranch={setSelectedBranch}
             selectedLanguage={selectedLanguage}
             setSelectedLanguage={setSelectedLanguage}
             supportedLanguages={supportedLanguages}

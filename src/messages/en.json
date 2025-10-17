@@ -89,6 +89,7 @@
     "includeMode": "Include Only Paths",
     "excludeModeDescription": "Specify paths to exclude from processing (default behavior)",
     "includeModeDescription": "Specify only the paths to include, ignoring all others",
+    "branch": "Branch",
     "authorizationCode": "Authorization Code",
     "authorizationRequired": "Authentication is required to generate the wiki."
   },

@@ -5,6 +5,7 @@ export interface RepoInfo {
     token: string | null;
     localPath: string | null;
     repoUrl: string | null;
+    branch?: string; // Optional branch parameter
 }
 
 export default RepoInfo;
