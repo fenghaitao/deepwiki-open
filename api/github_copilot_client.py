@@ -9,6 +9,13 @@ import asyncio
 import litellm
 from litellm import completion, acompletion, embedding, aembedding
 
+# Import JSON flattening utilities
+from api.json_flatten_utils import (
+    flatten_github_copilot_json,
+    validate_github_copilot_response,
+    repair_github_copilot_streaming_chunk
+)
+
 # AdalFlow imports
 from adalflow.core.model_client import ModelClient
 from adalflow.core.types import (
@@ -201,8 +208,33 @@ class GitHubCopilotClient(ModelClient):
         
         return final_model_kwargs
     
+    def _handle_malformed_response(self, response_text: str) -> Any:
+        """
+        Handle malformed JSON responses from GitHub Copilot using flattening logic.
+        
+        Args:
+            response_text: Raw response text that failed standard JSON parsing
+            
+        Returns:
+            Parsed response object or error structure
+        """
+        log.info(f"🔧 Handling malformed GitHub Copilot response...")
+        log.info(f"   Response length: {len(response_text)} characters")
+        log.info(f"   Response preview: {response_text[:200]}...")
+        
+        # Use our JSON flattening utilities
+        flattened_response = flatten_github_copilot_json(response_text)
+        
+        # Validate the flattened response
+        if validate_github_copilot_response(flattened_response):
+            log.info(f"✅ Successfully flattened malformed response")
+            return flattened_response
+        else:
+            log.warning(f"⚠️ Flattened response validation failed")
+            return flattened_response  # Return anyway, might still be usable
+
     def parse_chat_completion(self, completion) -> GeneratorOutput:
-        """Parse LiteLLM completion response."""
+        """Parse LiteLLM completion response with enhanced JSON flattening."""
         log.info(f"🔍 Parsing chat completion response...")
         log.info(f"   Raw completion type: {type(completion)}")
         log.info(f"   Raw completion preview: {str(completion)[:300]}...")
@@ -631,8 +663,8 @@ class GitHubCopilotClient(ModelClient):
             raise ValueError(f"Model type {model_type} is not supported")
     
     async def _handle_streaming_response(self, api_kwargs: Dict):
-        """Handle streaming response from LiteLLM."""
-        log.info(f"🌊 Starting streaming response handler...")
+        """Handle streaming response from LiteLLM with enhanced JSON flattening."""
+        log.info(f"🌊 Starting enhanced streaming response handler...")
         log.info(f"   Stream kwargs: {api_kwargs.keys()}")
         
         try:
@@ -643,39 +675,87 @@ class GitHubCopilotClient(ModelClient):
             
             chunk_count = 0
             content_parts = []
+            malformed_chunks = 0
             
             async for chunk in stream:
                 chunk_count += 1
-                log.info(f"   Chunk {chunk_count}: {type(chunk)}")
+                log.debug(f"   Chunk {chunk_count}: {type(chunk)}")
                 
+                # Try to handle chunk normally first
+                content = None
                 if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
                     delta = chunk.choices[0].delta
-                    log.info(f"   Delta: {type(delta)}")
                     
                     if hasattr(delta, 'content') and delta.content:
                         content = delta.content
-                        content_parts.append(content)
-                        log.info(f"   Yielding content: {content[:50]}{'...' if len(content) > 50 else ''}")
-                        yield content
+                        log.debug(f"   Standard content: {content[:50]}{'...' if len(content) > 50 else ''}")
                     else:
-                        log.info(f"   Delta has no content: {delta}")
+                        log.debug(f"   Delta has no content: {delta}")
+                
+                # If standard parsing failed, try JSON flattening on raw chunk
+                if content is None and hasattr(chunk, '__dict__'):
+                    try:
+                        # Convert chunk to string and try flattening
+                        chunk_str = str(chunk)
+                        if chunk_str and chunk_str != str(type(chunk)):
+                            repaired_chunk = repair_github_copilot_streaming_chunk(chunk_str)
+                            if repaired_chunk and "choices" in repaired_chunk:
+                                choices = repaired_chunk["choices"]
+                                if isinstance(choices, list) and len(choices) > 0:
+                                    choice = choices[0]
+                                    if isinstance(choice, dict):
+                                        # Try delta content
+                                        if "delta" in choice and isinstance(choice["delta"], dict):
+                                            content = choice["delta"].get("content")
+                                        # Try message content
+                                        elif "message" in choice and isinstance(choice["message"], dict):
+                                            content = choice["message"].get("content")
+                                        
+                                        if content:
+                                            malformed_chunks += 1
+                                            log.debug(f"   Repaired malformed chunk: {content[:50]}...")
+                    except Exception as repair_error:
+                        log.debug(f"   Chunk repair failed: {repair_error}")
+                
+                # Yield content if we got any
+                if content:
+                    content_parts.append(content)
+                    yield content
                 else:
-                    log.info(f"   Chunk has no choices: {chunk}")
+                    log.debug(f"   No content extracted from chunk {chunk_count}")
             
             full_content = ''.join(content_parts)
-            log.info(f"✅ Streaming completed: {chunk_count} chunks, {len(full_content)} total chars")
-            log.info(f"   Full content preview: {full_content[:100]}{'...' if len(full_content) > 100 else ''}")
+            log.info(f"✅ Enhanced streaming completed:")
+            log.info(f"   Total chunks: {chunk_count}")
+            log.info(f"   Malformed chunks repaired: {malformed_chunks}")
+            log.info(f"   Total content length: {len(full_content)} chars")
+            log.info(f"   Content preview: {full_content[:100]}{'...' if len(full_content) > 100 else ''}")
             
         except Exception as e:
-            log.error(f"❌ Error in streaming response: {e}")
+            log.error(f"❌ Error in enhanced streaming response: {e}")
             log.error(f"   Exception type: {type(e)}")
             import traceback
             log.error(f"   Full traceback: {traceback.format_exc()}")
             yield f"Error: {str(e)}"
     
     def parse_embedding_response(self, response) -> EmbedderOutput:
-        """Parse GitHub Copilot embedding response."""
+        """Parse GitHub Copilot embedding response with enhanced JSON flattening."""
         log.info(f"🔍 Parsing GitHub Copilot embedding response...")
+        
+        # If response is a string (malformed JSON), try to flatten it first
+        if isinstance(response, str):
+            log.info("Response is string, attempting JSON flattening...")
+            flattened_response = self._handle_malformed_response(response)
+            if isinstance(flattened_response, dict):
+                response = flattened_response
+            else:
+                log.error("Failed to flatten embedding response")
+                return EmbedderOutput(
+                    data=None,
+                    error="Failed to parse embedding response",
+                    raw_response=str(response)
+                )
+        
         try:
             if hasattr(response, 'data') and len(response.data) > 0:
                 log.info(f"   Response contains {len(response.data)} embedding(s)")
