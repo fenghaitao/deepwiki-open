@@ -100,14 +100,16 @@ def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool 
         # Rough approximation: 4 characters per token
         return len(text) // 4
 
-def download_repo(repo_url: str, local_path: str, type: str = "github", access_token: str = None) -> str:
+def download_repo(repo_url: str, local_path: str, type: str = "github", access_token: str = None, branch: str = None) -> str:
     """
     Downloads a Git repository (GitHub, GitLab, or Bitbucket) to a specified local path.
 
     Args:
         repo_url (str): The URL of the Git repository to clone.
         local_path (str): The local directory where the repository will be cloned.
+        type (str): The type of repository (github, gitlab, bitbucket).
         access_token (str, optional): Access token for private repositories.
+        branch (str, optional): Specific branch to clone. If None, clones default branch.
 
     Returns:
         str: The output message from the `git` command.
@@ -150,10 +152,17 @@ def download_repo(repo_url: str, local_path: str, type: str = "github", access_t
             logger.info("Using access token for authentication")
 
         # Clone the repository
-        logger.info(f"Cloning repository from {repo_url} to {local_path}")
+        logger.info(f"Cloning repository from {repo_url} to {local_path}" + (f" (branch: {branch})" if branch else " (default branch)"))
         # We use repo_url in the log to avoid exposing the token in logs
+        
+        # Build clone command with optional branch specification
+        clone_cmd = ["git", "clone", "--depth=1", "--single-branch"]
+        if branch:
+            clone_cmd.extend(["--branch", branch])
+        clone_cmd.extend([clone_url, local_path])
+        
         result = subprocess.run(
-            ["git", "clone", "--depth=1", "--single-branch", clone_url, local_path],
+            clone_cmd,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -747,12 +756,14 @@ class DatabaseManager:
     def prepare_database(self, repo_url_or_path: str, type: str = "github", access_token: str = None, 
                        embedder_type: str = None, is_ollama_embedder: bool = None,
                        excluded_dirs: List[str] = None, excluded_files: List[str] = None,
-                       included_dirs: List[str] = None, included_files: List[str] = None) -> List[Document]:
+                       included_dirs: List[str] = None, included_files: List[str] = None,
+                       branch: str = None) -> List[Document]:
         """
         Create a new database from the repository.
 
         Args:
             repo_url_or_path (str): The URL or local path of the repository
+            type (str): The type of repository (github, gitlab, bitbucket)
             access_token (str, optional): Access token for private repositories
             embedder_type (str, optional): Embedder type to use ('openai', 'google', 'ollama').
                                          If None, will be determined from configuration.
@@ -762,6 +773,7 @@ class DatabaseManager:
             excluded_files (List[str], optional): List of file patterns to exclude from processing
             included_dirs (List[str], optional): List of directories to include exclusively
             included_files (List[str], optional): List of file patterns to include exclusively
+            branch (str, optional): Specific branch to clone and process. If None, uses default branch.
 
         Returns:
             List[Document]: List of Document objects
@@ -771,7 +783,7 @@ class DatabaseManager:
             embedder_type = 'ollama' if is_ollama_embedder else None
         
         self.reset_database()
-        self._create_repo(repo_url_or_path, type, access_token)
+        self._create_repo(repo_url_or_path, type, access_token, branch)
         return self.prepare_db_index(embedder_type=embedder_type, excluded_dirs=excluded_dirs, excluded_files=excluded_files,
                                    included_dirs=included_dirs, included_files=included_files)
 
@@ -783,7 +795,7 @@ class DatabaseManager:
         self.repo_url_or_path = None
         self.repo_paths = None
 
-    def _extract_repo_name_from_url(self, repo_url_or_path: str, repo_type: str) -> str:
+    def _extract_repo_name_from_url(self, repo_url_or_path: str, repo_type: str, branch: str = None) -> str:
         # Extract owner and repo name to create unique identifier
         url_parts = repo_url_or_path.rstrip('/').split('/')
 
@@ -796,18 +808,25 @@ class DatabaseManager:
             repo_name = f"{owner}_{repo}"
         else:
             repo_name = url_parts[-1].replace(".git", "")
+        
+        # Include branch in repo name for separate database caching per branch
+        if branch:
+            repo_name = f"{repo_name}_{branch}"
+        
         return repo_name
 
-    def _create_repo(self, repo_url_or_path: str, repo_type: str = "github", access_token: str = None) -> None:
+    def _create_repo(self, repo_url_or_path: str, repo_type: str = "github", access_token: str = None, branch: str = None) -> None:
         """
         Download and prepare all paths.
         Paths:
-        ~/.adalflow/repos/{owner}_{repo_name} (for url, local path will be the same)
-        ~/.adalflow/databases/{owner}_{repo_name}.pkl
+        ~/.adalflow/repos/{owner}_{repo_name}_{branch} (for url, local path will be the same)
+        ~/.adalflow/databases/{owner}_{repo_name}_{branch}.pkl
 
         Args:
             repo_url_or_path (str): The URL or local path of the repository
+            repo_type (str): The type of repository (github, gitlab, bitbucket)
             access_token (str, optional): Access token for private repositories
+            branch (str, optional): Specific branch to clone. If None, uses default branch.
         """
         logger.info(f"Preparing repo storage for {repo_url_or_path}...")
 
@@ -818,15 +837,15 @@ class DatabaseManager:
             # url
             if repo_url_or_path.startswith("https://") or repo_url_or_path.startswith("http://"):
                 # Extract the repository name from the URL
-                repo_name = self._extract_repo_name_from_url(repo_url_or_path, repo_type)
-                logger.info(f"Extracted repo name: {repo_name}")
+                repo_name = self._extract_repo_name_from_url(repo_url_or_path, repo_type, branch)
+                logger.info(f"Extracted repo name: {repo_name}" + (f" (branch: {branch})" if branch else ""))
 
                 save_repo_dir = os.path.join(root_path, "repos", repo_name)
 
                 # Check if the repository directory already exists and is not empty
                 if not (os.path.exists(save_repo_dir) and os.listdir(save_repo_dir)):
                     # Only download if the repository doesn't exist or is empty
-                    download_repo(repo_url_or_path, save_repo_dir, repo_type, access_token)
+                    download_repo(repo_url_or_path, save_repo_dir, repo_type, access_token, branch)
                 else:
                     logger.info(f"Repository already exists at {save_repo_dir}. Using existing repository.")
             else:  # local path

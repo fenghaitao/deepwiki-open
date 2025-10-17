@@ -2252,6 +2252,7 @@ IMPORTANT:
               isCustomModel={isCustomSelectedModelState}
               customModel={customSelectedModelState}
               language={language}
+              currentBranch={currentBranch}
               onRef={(ref) => (askComponentRef.current = ref)}
             />
           </div>

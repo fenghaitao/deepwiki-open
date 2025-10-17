@@ -40,6 +40,7 @@ interface AskProps {
   isCustomModel?: boolean;
   customModel?: string;
   language?: string;
+  currentBranch?: string;
   onRef?: (ref: { clearConversation: () => void }) => void;
 }
 
@@ -50,6 +51,7 @@ const Ask: React.FC<AskProps> = ({
   isCustomModel = false,
   customModel = '',
   language = 'en',
+  currentBranch,
   onRef
 }) => {
   const [question, setQuestion] = useState('');
@@ -320,7 +322,8 @@ const Ask: React.FC<AskProps> = ({
         messages: newHistory.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content })),
         provider: selectedProvider,
         model: isCustomSelectedModel ? customSelectedModel : selectedModel,
-        language: language
+        language: language,
+        branch: currentBranch
       };
 
       // Add tokens if available
@@ -562,7 +565,8 @@ const Ask: React.FC<AskProps> = ({
         messages: newHistory.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content })),
         provider: selectedProvider,
         model: isCustomSelectedModel ? customSelectedModel : selectedModel,
-        language: language
+        language: language,
+        branch: currentBranch
       };
 
       // Add tokens if available
