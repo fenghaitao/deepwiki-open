@@ -287,11 +287,8 @@ export default function RepoWikiPage() {
     window.history.pushState({}, '', currentUrl.toString());
     
     // Clear wiki data to force refresh with new branch
-    setWikiStructure(null);
-    setPages([]);
-    setSelectedPage(null);
-    setSelectedSection(null);
-    setFileTree('');
+    setWikiStructure(undefined);
+    setGeneratedPages({});
     
     // Fetch repository structure for the new branch
     fetchRepositoryStructure();

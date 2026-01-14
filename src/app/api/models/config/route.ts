@@ -25,6 +25,21 @@ export async function GET() {
 
     // Forward the response from the backend
     const modelConfig = await backendResponse.json();
+
+    // Ensure qwen3-coder-plus is available for the iflow provider
+    const iflowProvider = modelConfig?.providers?.find((provider: any) => provider.id === 'iflow');
+    if (iflowProvider) {
+      const hasQwen3CoderPlus = (iflowProvider.models || []).some(
+        (model: any) => model.id === 'qwen3-coder-plus'
+      );
+      if (!hasQwen3CoderPlus) {
+        iflowProvider.models = [
+          { id: 'qwen3-coder-plus', name: 'qwen3-coder-plus' },
+          ...(iflowProvider.models || []),
+        ];
+      }
+    }
+
     return NextResponse.json(modelConfig);
   } catch (error) {
     console.error('Error fetching model configurations:', error);    

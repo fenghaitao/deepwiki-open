@@ -143,7 +143,7 @@ export default function ConfigurationModal({
             </div>
 
             {/* Branch Selection - Full width, separate section */}
-            {selectedBranch && setSelectedBranch && selectedPlatform !== 'local' && (
+            {selectedBranch && setSelectedBranch && (
               <div className="mb-6">
                 <label className="block text-sm font-medium text-[var(--foreground)] mb-3">
                   {t.form?.branch || 'Branch'}

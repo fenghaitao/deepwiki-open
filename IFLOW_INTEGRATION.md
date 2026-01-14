@@ -39,7 +39,8 @@ export IFLOW_API_KEY="your-iflow-api-key"
 
 The iFlow provider is configured in `api/config/generator.json` using OpenAIClient with the following models:
 
-- `iflow/Qwen3-Coder` (default)
+- `iflow/qwen3-coder-plus` (default)
+- `iflow/Qwen3-Coder`
 - `iflow/qwen-plus`
 - `iflow/qwen-turbo`
 - `iflow/qwen-max`
