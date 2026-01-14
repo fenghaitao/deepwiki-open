@@ -807,8 +807,16 @@ class GitHubCopilotClient(ModelClient):
                     log.info(f"   No usage information available")
                 
                 log.info(f"✅ Successfully parsed GitHub Copilot embedding response")
+                
+                # Wrap raw embeddings in Embedding objects as required by adalflow
+                from adalflow.core.types import Embedding
+                embedding_objects = [
+                    Embedding(embedding=emb, index=i) 
+                    for i, emb in enumerate(embeddings)
+                ]
+                
                 return EmbedderOutput(
-                    data=embeddings,  # embeddings are now raw lists (compatible with enhanced adalflow)
+                    data=embedding_objects,  # List of Embedding objects as required by adalflow
                     error=None,
                     raw_response=str(response),
                     usage=usage

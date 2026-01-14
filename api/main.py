@@ -6,6 +6,19 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Fix for corporate proxy SSL timeout issues with LiteLLM/GitHub Copilot
+# Must be done BEFORE any litellm imports
+try:
+    import httpx
+    import litellm
+    # Clear any cached httpx clients with short timeouts
+    litellm.in_memory_llm_clients_cache.flush_cache()
+    # Patch the default timeout for corporate proxies (default 5s is too short)
+    import litellm.llms.custom_httpx.http_handler as http_handler
+    http_handler._DEFAULT_TIMEOUT = httpx.Timeout(timeout=60.0, connect=30.0)
+except ImportError:
+    pass  # litellm not installed yet
+
 from api.logging_config import setup_logging
 
 # Configure logging
