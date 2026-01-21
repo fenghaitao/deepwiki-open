@@ -529,6 +529,10 @@ class GitHubCopilotClient(ModelClient):
         """
         if model_type == ModelType.LLM:
             try:
+                # Ensure model name has github_copilot/ prefix
+                if "model" in api_kwargs:
+                    api_kwargs["model"] = self._format_model_name(api_kwargs["model"])
+                
                 log.info(f"🤖 GitHub Copilot LLM call with model: {api_kwargs.get('model', 'unknown')}")
                 # Use LiteLLM's completion function
                 response = completion(**api_kwargs)
@@ -539,6 +543,10 @@ class GitHubCopilotClient(ModelClient):
                 raise
         elif model_type == ModelType.EMBEDDER:
             try:
+                # Ensure model name has github_copilot/ prefix
+                if "model" in api_kwargs:
+                    api_kwargs["model"] = self._format_model_name(api_kwargs["model"])
+                
                 model = api_kwargs.get('model', 'unknown')
                 input_text = api_kwargs.get('input', '')
                 input_type = type(input_text).__name__
