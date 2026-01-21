@@ -433,6 +433,28 @@ IMPORTANT:
                 return None
             
             xml_text = match.group(0)
+            
+            # Escape unescaped special XML characters in text content
+            # This handles cases like "Q&A" -> "Q&amp;A"
+            def escape_xml_content(text: str) -> str:
+                """Escape special XML characters that aren't already escaped"""
+                # Replace & with &amp; only if not already part of an entity
+                text = re.sub(r'&(?!(?:amp|lt|gt|quot|apos);)', '&amp;', text)
+                # Replace < and > that are not part of tags
+                # We need to be careful not to escape actual XML tags
+                return text
+            
+            # Apply escaping to text content between tags
+            # Match content between > and < that isn't already escaped
+            def escape_text_nodes(match):
+                content = match.group(1)
+                # Only escape if it contains special characters
+                if '&' in content or '<' in content or '>' in content:
+                    return '>' + escape_xml_content(content) + '<'
+                return match.group(0)
+            
+            xml_text = re.sub(r'>([^<>]+)<', escape_text_nodes, xml_text)
+            
             root = ET.fromstring(xml_text)
             
             # Extract basic structure
