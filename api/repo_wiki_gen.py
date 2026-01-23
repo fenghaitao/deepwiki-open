@@ -60,7 +60,7 @@ class RepoInfo:
     repo_url: Optional[str] = None
 
 
-class WikiGenerator:
+class WikiGenerationHelper:
     """Wiki generation orchestrator"""
     
     def __init__(
@@ -187,7 +187,7 @@ class WikiGenerator:
         return language_map.get(self.language, 'English')
     
     def create_page_content_prompt(self, page: WikiPage) -> str:
-        """Create prompt for generating page content"""
+        """Create prompt for generating page content (aligned with web implementation)"""
         file_links = '\n'.join([
             f"- [{path}]({self.generate_file_url(path)})"
             for path in page.file_paths
@@ -293,7 +293,8 @@ Remember:
         return prompt
     
     def create_wiki_structure_prompt(self, file_tree: str, readme: str) -> str:
-        """Create prompt for determining wiki structure"""
+        """Create prompt for determining wiki structure (aligned with web implementation)"""
+        language_name = self.get_language_name()
         pages_count = '8-12' if self.is_comprehensive else '4-6'
         
         structure_section = ""
@@ -389,7 +390,7 @@ Return your analysis in the following XML format:
 
 I want to create a wiki for this repository. Determine the most logical structure for a wiki based on the repository's content.
 
-IMPORTANT: The wiki content will be generated in {self.get_language_name()} language.
+IMPORTANT: The wiki content will be generated in {language_name} language.
 
 When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
 - Architecture overviews
@@ -433,115 +434,107 @@ IMPORTANT:
                 return None
             
             xml_text = match.group(0)
-            
-            # Escape unescaped special XML characters in text content
-            # This handles cases like "Q&A" -> "Q&amp;A"
-            def escape_xml_content(text: str) -> str:
-                """Escape special XML characters that aren't already escaped"""
-                # Replace & with &amp; only if not already part of an entity
-                text = re.sub(r'&(?!(?:amp|lt|gt|quot|apos);)', '&amp;', text)
-                # Replace < and > that are not part of tags
-                # We need to be careful not to escape actual XML tags
-                return text
-            
-            # Apply escaping to text content between tags
-            # Match content between > and < that isn't already escaped
-            def escape_text_nodes(match):
-                content = match.group(1)
-                # Only escape if it contains special characters
-                if '&' in content or '<' in content or '>' in content:
-                    return '>' + escape_xml_content(content) + '<'
-                return match.group(0)
-            
-            xml_text = re.sub(r'>([^<>]+)<', escape_text_nodes, xml_text)
-            
             root = ET.fromstring(xml_text)
             
             # Extract basic structure
             title = root.findtext('title', '')
             description = root.findtext('description', '')
             
-            # Parse pages
+            # Parse pages - check both nested and direct structure
             pages = []
-            pages_elem = root.find('pages')
-            if pages_elem is not None:
-                for page_elem in pages_elem.findall('page'):
-                    page_id = page_elem.get('id', f'page-{len(pages) + 1}')
-                    page_title = page_elem.findtext('title', '')
-                    importance = page_elem.findtext('importance', 'medium')
-                    
-                    # Validate importance
-                    if importance not in ['high', 'medium', 'low']:
-                        importance = 'medium'
-                    
-                    # Get file paths
-                    file_paths = []
-                    relevant_files = page_elem.find('relevant_files')
-                    if relevant_files is not None:
-                        for file_path_elem in relevant_files.findall('file_path'):
-                            if file_path_elem.text:
-                                file_paths.append(file_path_elem.text)
-                    
-                    # Get related pages
-                    related_pages = []
-                    related_pages_elem = page_elem.find('related_pages')
-                    if related_pages_elem is not None:
-                        for related_elem in related_pages_elem.findall('related'):
-                            if related_elem.text:
-                                related_pages.append(related_elem.text)
-                    
-                    pages.append(WikiPage(
-                        id=page_id,
-                        title=page_title,
-                        content='',
-                        file_paths=file_paths,
-                        importance=importance,  # type: ignore
-                        related_pages=related_pages
-                    ))
             
-            # Parse sections if comprehensive view
+            # First try nested structure (pages/page)
+            pages_elem = root.find('pages')
+            page_elements = []
+            if pages_elem is not None:
+                page_elements = pages_elem.findall('page')
+            else:
+                # Fallback to direct structure (page directly under root)
+                page_elements = root.findall('page')
+            
+            for page_elem in page_elements:
+                page_id = page_elem.get('id', f'page-{len(pages) + 1}')
+                page_title = page_elem.findtext('title', '')
+                importance = page_elem.findtext('importance', 'medium')
+                
+                # Validate importance
+                if importance not in ['high', 'medium', 'low']:
+                    importance = 'medium'
+                
+                # Get file paths - check both nested and direct structure
+                file_paths = []
+                relevant_files = page_elem.find('relevant_files')
+                if relevant_files is not None:
+                    for file_path_elem in relevant_files.findall('file_path'):
+                        if file_path_elem.text:
+                            file_paths.append(file_path_elem.text)
+                else:
+                    # Fallback to direct file_path elements
+                    for file_path_elem in page_elem.findall('file_path'):
+                        if file_path_elem.text:
+                            file_paths.append(file_path_elem.text)
+                
+                # Get related pages - check both nested and direct structure
+                related_pages = []
+                related_pages_elem = page_elem.find('related_pages')
+                if related_pages_elem is not None:
+                    for related_elem in related_pages_elem.findall('related'):
+                        if related_elem.text:
+                            related_pages.append(related_elem.text)
+                else:
+                    # Fallback to direct related elements
+                    for related_elem in page_elem.findall('related'):
+                        if related_elem.text:
+                            related_pages.append(related_elem.text)
+                
+                pages.append(WikiPage(
+                    id=page_id,
+                    title=page_title,
+                    content='',
+                    file_paths=file_paths,
+                    importance=importance,
+                    related_pages=related_pages
+                ))
+            
+            # Parse sections
             sections = []
             root_sections = []
+            sections_elem = root.find('sections')
+            if sections_elem is not None:
+                for section_elem in sections_elem.findall('section'):
+                    section_id = section_elem.get('id', f'section-{len(sections) + 1}')
+                    section_title = section_elem.findtext('title', '')
+                    
+                    # Get page references
+                    page_refs = []
+                    pages_elem = section_elem.find('pages')
+                    if pages_elem is not None:
+                        for page_ref_elem in pages_elem.findall('page_ref'):
+                            if page_ref_elem.text:
+                                page_refs.append(page_ref_elem.text)
+                    
+                    # Get subsection references
+                    subsection_refs = []
+                    subsections_elem = section_elem.find('subsections')
+                    if subsections_elem is not None:
+                        for subsection_ref_elem in subsections_elem.findall('section_ref'):
+                            if subsection_ref_elem.text:
+                                subsection_refs.append(subsection_ref_elem.text)
+                    
+                    sections.append(WikiSection(
+                        id=section_id,
+                        title=section_title,
+                        pages=page_refs,
+                        subsections=subsection_refs if subsection_refs else None
+                    ))
             
-            if self.is_comprehensive:
-                sections_elem = root.find('sections')
-                if sections_elem is not None:
-                    section_ids = set()
-                    for section_elem in sections_elem.findall('section'):
-                        section_id = section_elem.get('id', f'section-{len(sections) + 1}')
-                        section_title = section_elem.findtext('title', '')
-                        
-                        # Get page references
-                        section_pages = []
-                        pages_elem = section_elem.find('pages')
-                        if pages_elem is not None:
-                            for page_ref in pages_elem.findall('page_ref'):
-                                if page_ref.text:
-                                    section_pages.append(page_ref.text)
-                        
-                        # Get subsections
-                        subsections = []
-                        subsections_elem = section_elem.find('subsections')
-                        if subsections_elem is not None:
-                            for section_ref in subsections_elem.findall('section_ref'):
-                                if section_ref.text:
-                                    subsections.append(section_ref.text)
-                        
-                        sections.append(WikiSection(
-                            id=section_id,
-                            title=section_title,
-                            pages=section_pages,
-                            subsections=subsections if subsections else None
-                        ))
-                        section_ids.add(section_id)
-                    
-                    # Determine root sections (not referenced by other sections)
-                    referenced_sections = set()
-                    for section in sections:
-                        if section.subsections:
-                            referenced_sections.update(section.subsections)
-                    
-                    root_sections = [s.id for s in sections if s.id not in referenced_sections]
+            # Determine root sections (sections not referenced by other sections)
+            if sections:
+                referenced_sections = set()
+                for section in sections:
+                    if section.subsections:
+                        referenced_sections.update(section.subsections)
+                root_sections = [s.id for s in sections if s.id not in referenced_sections]
             
             return WikiStructure(
                 id='wiki',
@@ -553,7 +546,7 @@ IMPORTANT:
             )
             
         except Exception as e:
-            logger.error(f'Error parsing wiki structure XML: {e}')
+            logger.error(f"Error parsing wiki structure XML: {e}")
             return None
     
     def to_dict(self, obj) -> Dict:

@@ -188,6 +188,10 @@ def get_embedder_config():
         dict: The embedder configuration with model_client resolved
     """
     embedder_type = EMBEDDER_TYPE
+    if embedder_type in configs:
+        print(f"Using embedder type from environment: {embedder_type}, {configs.get(embedder_type)}")
+    else:
+        print(f"Using default embedder type: {configs.get('embedder')}")
     if embedder_type == 'google' and 'embedder_google' in configs:
         return configs.get("embedder_google", {})
     elif embedder_type == 'ollama' and 'embedder_ollama' in configs:

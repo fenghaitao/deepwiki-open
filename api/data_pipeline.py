@@ -93,7 +93,7 @@ def count_tokens(text: str, embedder_type: str = None, is_ollama_embedder: bool 
             # Use OpenAI embedding model encoding
             encoding = tiktoken.encoding_for_model("text-embedding-3-small")
 
-        return len(encoding.encode(text))
+        return len(encoding.encode(text, disallowed_special=()))
     except Exception as e:
         # Fallback to a simple approximation if tiktoken fails
         logger.warning(f"Error counting tokens with tiktoken: {e}")

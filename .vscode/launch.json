@@ -3,17 +3,21 @@
     "configurations": [
         {
             "name": "Deepwiki-Open",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
-            "module": "uvicorn",
+            "module": "api.cli",
             "args": [
-                "api.api:app",
-                "--reload",
-                "--port",
-                "8001"
+                "generate",
+                "/nfs/site/disks/ssm_lwang85_002/AI/ragflow",
+                "--repo-type", "github",
+                "--output", "/nfs/site/disks/ssm_lwang85_002/AI/ragflow/.deepwiki",
+                "--exclude-dir", ".codewiki",
+                "--model-provider", "github_copilot",
+                "--model", "gpt-4o",
             ],
+            "console": "integratedTerminal",
             "jinja": true,
-            "justMyCode": true
+            "justMyCode": false
         }
     ]
 }
